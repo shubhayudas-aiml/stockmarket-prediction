@@ -1,0 +1,4 @@
+import yfinance as yf
+
+df = yf.download("GOOG", period="max", auto_adjust=True)
+df.to_csv("backup_GOOG.csv")
