@@ -11,12 +11,18 @@ import base64
 st.title("Stock Price Predictor App")
 
 # ---------- Background Image ----------
+import os
+import base64
+
 def get_base64(file_path):
+    if not os.path.exists(file_path):
+        return None
     with open(file_path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 img_base64 = get_base64("s2.jpg")
+
 
 st.markdown(
     f"""
@@ -144,3 +150,4 @@ plt.plot(ploting_data["Actual Price"], label="Actual Price", color="orange")
 plt.plot(ploting_data["Predicted Price"], label="Predicted Price", color="blue")
 plt.legend()
 st.pyplot(fig)
+
