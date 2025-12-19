@@ -1,22 +1,22 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
+from keras.models import load_model
 import matplotlib.pyplot as plt
+import yfinance as yf
 from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
-from keras.models import load_model
+import base64
 
 st.title("Stock Price Predictor App")
 
-import base64
-
+# ---------- Background Image ----------
 def get_base64(file_path):
     with open(file_path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
-img_base64 = get_base64("sp1.jpg")
+img_base64 = get_base64("s2.jpg")
 
 st.markdown(
     f"""
@@ -32,52 +32,67 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-
-
-stock = st.text_input("Enter Stock Ticker", "GOOG")
+# ---------- Input ----------
+stock = st.text_input("Enter the Stock ID", "GOOG")
 
 end = datetime.now()
-start = datetime(end.year - 20, end.month, end.day)
+start = "2005-01-01"
 
+# ---------- Load Data (ASC for ML) ----------
 google_data = yf.download(stock, start, end)
 
 if google_data.empty:
     st.error("Invalid stock ticker")
     st.stop()
 
-if isinstance(google_data.columns, pd.MultiIndex):
-    google_data.columns = ['_'.join(col).strip() for col in google_data.columns.values]
-
-if f"Close_{stock}" in google_data.columns and "Adj Close" not in google_data.columns:
-    google_data.rename(columns={f"Close_{stock}": "Adj Close"}, inplace=True)
-
-st.subheader("Stock Data")
-st.write(google_data.tail())
+google_data_asc = google_data.copy()
+google_data_desc = google_data_asc.sort_index(ascending=False)
 
 model = load_model("Latest_stock_price_model.keras")
 
-google_data["MA_100"] = google_data["Adj Close"].rolling(100).mean()
-google_data["MA_200"] = google_data["Adj Close"].rolling(200).mean()
-google_data["MA_250"] = google_data["Adj Close"].rolling(250).mean()
+st.subheader("Stock Data (2025 → 2005)")
+st.write(google_data_desc)
 
-def plot_data(data, title):
+# ---------- Moving Averages (ASC) ----------
+google_data_asc["MA_100"] = google_data_asc.Close.rolling(100).mean()
+google_data_asc["MA_200"] = google_data_asc.Close.rolling(200).mean()
+google_data_asc["MA_250"] = google_data_asc.Close.rolling(250).mean()
+
+def plot_ma(title, ma_column):
     fig = plt.figure(figsize=(15,6))
-    plt.plot(data)
+    plt.plot(google_data_asc.Close, label="Actual Close Price", color="orange")
+    plt.plot(google_data_asc[ma_column], label=ma_column, color="blue")
+    plt.legend()
     plt.title(title)
     st.pyplot(fig)
 
-st.subheader("Moving Averages")
-plot_data(google_data[["Adj Close","MA_100"]], "Adj Close & MA 100")
-plot_data(google_data[["Adj Close","MA_200"]], "Adj Close & MA 200")
-plot_data(google_data[["Adj Close","MA_250"]], "Adj Close & MA 250")
+st.subheader("Original Close Price vs MA (100 Days)")
+plot_ma("MA 100 Days", "MA_100")
 
-Adj_close_price = google_data[["Adj Close"]]
+st.subheader("Original Close Price vs MA (200 Days)")
+plot_ma("MA 200 Days", "MA_200")
 
+st.subheader("Original Close Price vs MA (250 Days)")
+plot_ma("MA 250 Days", "MA_250")
+
+st.subheader("Original Close Price vs MA (100 & 250 Days)")
+fig = plt.figure(figsize=(15,6))
+plt.plot(google_data_asc.Close, label="Actual Close Price", color="orange")
+plt.plot(google_data_asc.MA_100, label="MA 100 Days", color="green")
+plt.plot(google_data_asc.MA_250, label="MA 250 Days", color="blue")
+plt.legend()
+st.pyplot(fig)
+
+# ---------- Train/Test Split ----------
+splitting_len = int(len(google_data_asc) * 0.8)
+x_test = pd.DataFrame(google_data_asc["Close"][splitting_len:])
+x_test.columns = ["Close"]
+
+# ---------- Scaling ----------
 scaler = MinMaxScaler(feature_range=(0,1))
-scaled_data = scaler.fit_transform(Adj_close_price)
+scaled_data = scaler.fit_transform(x_test)
 
-x_data = []
-y_data = []
+x_data, y_data = [], []
 
 for i in range(100, len(scaled_data)):
     x_data.append(scaled_data[i-100:i])
@@ -86,29 +101,46 @@ for i in range(100, len(scaled_data)):
 x_data = np.array(x_data)
 y_data = np.array(y_data)
 
-splitting_len = int(len(x_data) * 0.7)
+# ---------- Prediction ----------
+predictions = model.predict(x_data)
 
-x_test = x_data[splitting_len:]
-y_test = y_data[splitting_len:]
+inv_pred = scaler.inverse_transform(predictions)
+inv_y = scaler.inverse_transform(y_data)
 
-predictions = model.predict(x_test)
-
-inv_predictions = scaler.inverse_transform(predictions)
-inv_y_test = scaler.inverse_transform(y_test)
-
-ploting_data = pd.DataFrame(
-    {
-        "Original": inv_y_test.reshape(-1),
-        "Predicted": inv_predictions.reshape(-1)
-    },
-    index=google_data.index[splitting_len+100:]
+# Smooth predictions
+inv_pred_smoothed = (
+    pd.Series(inv_pred.reshape(-1))
+    .rolling(3)
+    .mean()
+    .bfill()
+    .values
 )
 
-st.subheader("Original vs Predicted Values")
-st.write(ploting_data.tail())
+# ---------- Prediction DataFrame (ASC) ----------
+ploting_data = pd.DataFrame(
+    {
+        "Actual Price": inv_y.reshape(-1),
+        "Predicted Price": inv_pred_smoothed
+    },
+    index=google_data_asc.index[splitting_len+100:]
+)
 
-st.subheader("Final Prediction Plot")
+# Align with full timeline
+ploting_data = ploting_data.reindex(google_data_asc.index)
+
+# Fill actual price everywhere
+ploting_data["Actual Price"] = google_data_asc["Close"]
+
+# Display latest first
+ploting_data = ploting_data.sort_index(ascending=False)
+
+# ---------- Output ----------
+st.subheader("Original vs Predicted Values (2025 → 2005)")
+st.write(ploting_data)
+
+st.subheader("Original vs Predicted Close Price")
 fig = plt.figure(figsize=(15,6))
-plt.plot(pd.concat([Adj_close_price[:splitting_len+100], ploting_data], axis=0))
-plt.legend(["Training Data","Original Test Data","Predicted Data"])
+plt.plot(ploting_data["Actual Price"], label="Actual Price", color="orange")
+plt.plot(ploting_data["Predicted Price"], label="Predicted Price", color="blue")
+plt.legend()
 st.pyplot(fig)
