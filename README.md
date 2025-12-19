@@ -20,38 +20,47 @@ Compare actual vs predicted prices
 🧠 Key Features
 
 ✔ Fetches historical stock market data using yfinance
+
 ✔ Performs data preprocessing and normalization
+
 ✔ Predicts future stock prices using a trained ML model
+
 ✔ Visualizes trends with moving averages and comparison charts
+
 ✔ Interactive and user-friendly UI built with Streamlit
+
 ✔ Deployed live on Streamlit Cloud
 
 🗂️ Repository Structure
-File / Folder	Description
-stock_app.py	Main Streamlit web application
-requirements.txt	Python dependencies
-runtime.txt	Python runtime configuration
-Stock Price.ipynb	Data analysis and model training notebook
-Latest_stock_price_model.keras	Trained machine learning model
-stock_price	Scaler file for feature normalization
-s2.jpg	Application UI background image
+| File / Folder                    | Description                               |
+| -------------------------------- | ----------------------------------------- |
+| `stock_app.py`                   | Main Streamlit web application            |
+| `requirements.txt`               | Python dependencies                       |
+| `runtime.txt`                    | Python runtime configuration              |
+| `Stock Price.ipynb`              | Data analysis and model training notebook |
+| `Latest_stock_price_model.keras` | Trained machine learning model            |
+| `stock_price`                    | Scaler file for feature normalization     |
+| `s2.jpg`                         | Application UI background image           |
+
 🛠️ Technologies Used
 
-Python
+✔Python
 
-Streamlit
+✔Streamlit
 
-TensorFlow / Keras
+✔TensorFlow 
 
-scikit-learn
+✔Keras
 
-pandas
+✔scikit-learn
+
+✔pandas
 
 numpy
 
-matplotlib
+✔matplotlib
 
-yfinance
+✔yfinance
 
 📊 How the System Works
 
