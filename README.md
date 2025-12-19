@@ -65,9 +65,13 @@ numpy
 📊 How the System Works
 
 ✔ Historical stock data is collected using the yfinance API
+
 ✔ Data is cleaned, processed, and scaled
+
 ✔ A trained machine learning model predicts future stock prices
+
 ✔ Actual and predicted prices are visualized using interactive charts
+
 ✔ The final output is delivered through a Streamlit web application
 
 💻 Local Setup (Optional)
