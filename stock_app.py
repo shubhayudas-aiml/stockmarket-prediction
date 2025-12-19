@@ -11,7 +11,7 @@ import os
 st.title("Stock Price Predictor App")
 
 # =========================================================
-# Background Image (SAFE – optional)
+# Optional Background Image
 # =========================================================
 def get_base64(file_path):
     if not os.path.exists(file_path):
@@ -38,12 +38,12 @@ if img_base64:
     )
 
 # =========================================================
-# User Input
+# Input
 # =========================================================
 stock = st.text_input("Enter the Stock ID", "GOOG").upper()
 
 # =========================================================
-# Reliable Yahoo Finance Loader (FIXED)
+# Data Loader with Fallback (FINAL FIX)
 # =========================================================
 @st.cache_data(show_spinner=False)
 def load_stock_data(ticker):
@@ -54,15 +54,26 @@ def load_stock_data(ticker):
             auto_adjust=True,
             threads=False
         )
-        return data
+        if not data.empty:
+            return data, "live"
     except:
-        return pd.DataFrame()
+        pass
 
-google_data = load_stock_data(stock)
+    # Fallback to CSV
+    if os.path.exists("backup_GOOG.csv"):
+        data = pd.read_csv("backup_GOOG.csv", index_col=0, parse_dates=True)
+        return data, "backup"
+
+    return pd.DataFrame(), "none"
+
+google_data, source = load_stock_data(stock)
 
 if google_data.empty:
-    st.warning("Yahoo Finance is temporarily unavailable. Please refresh or try again later.")
+    st.error("Unable to load stock data (no live or backup data found).")
     st.stop()
+
+if source == "backup":
+    st.info("Live data unavailable. Showing cached historical data.")
 
 # =========================================================
 # Keep ASC for ML, DESC for Display
@@ -70,9 +81,6 @@ if google_data.empty:
 google_data_asc = google_data.copy()
 google_data_desc = google_data_asc.sort_index(ascending=False)
 
-# =========================================================
-# Load Model
-# =========================================================
 model = load_model("Latest_stock_price_model.keras")
 
 # =========================================================
@@ -82,7 +90,7 @@ st.subheader("Stock Data (Latest to Oldest)")
 st.write(google_data_desc)
 
 # =========================================================
-# Moving Averages (ASC data)
+# Moving Averages
 # =========================================================
 google_data_asc["MA_100"] = google_data_asc.Close.rolling(100).mean()
 google_data_asc["MA_200"] = google_data_asc.Close.rolling(200).mean()
@@ -121,7 +129,7 @@ x_test = pd.DataFrame(google_data_asc["Close"][splitting_len:])
 x_test.columns = ["Close"]
 
 # =========================================================
-# Scaling & Sequence Creation
+# Scaling & Prediction
 # =========================================================
 scaler = MinMaxScaler(feature_range=(0,1))
 scaled_data = scaler.fit_transform(x_test)
@@ -135,15 +143,11 @@ for i in range(100, len(scaled_data)):
 x_data = np.array(x_data)
 y_data = np.array(y_data)
 
-# =========================================================
-# Prediction
-# =========================================================
 predictions = model.predict(x_data)
 
 inv_pred = scaler.inverse_transform(predictions)
 inv_y = scaler.inverse_transform(y_data)
 
-# Smooth predictions (visual improvement)
 inv_pred_smoothed = (
     pd.Series(inv_pred.reshape(-1))
     .rolling(3)
@@ -152,9 +156,6 @@ inv_pred_smoothed = (
     .values
 )
 
-# =========================================================
-# Prediction DataFrame
-# =========================================================
 ploting_data = pd.DataFrame(
     {
         "Actual Price": inv_y.reshape(-1),
@@ -163,13 +164,8 @@ ploting_data = pd.DataFrame(
     index=google_data_asc.index[splitting_len+100:]
 )
 
-# Align with full timeline
 ploting_data = ploting_data.reindex(google_data_asc.index)
-
-# Fill actual prices for all dates
 ploting_data["Actual Price"] = google_data_asc["Close"]
-
-# Show latest first
 ploting_data = ploting_data.sort_index(ascending=False)
 
 # =========================================================
