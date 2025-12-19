@@ -1,151 +1,154 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
+from keras.models import load_model
 import matplotlib.pyplot as plt
-from sklearn.ensemble import RandomForestRegressor
+import yfinance as yf
+from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
-import joblib
-import os
 import base64
 
 st.title("Stock Price Predictor App")
 
-# ======================================================
-# SAFE Background Image (NO FileNotFoundError)
-# ======================================================
+# ---------- Background Image ----------
 def get_base64(file_path):
-    if not os.path.exists(file_path):
-        return None
     with open(file_path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 img_base64 = get_base64("s2.jpg")
 
-if img_base64:
-    st.markdown(
-        f"""
-        <style>
-        .stApp {{
-            background-image: url("data:image/jpg;base64,{img_base64}");
-            background-size: cover;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-image: url("data:image/jpg;base64,{img_base64}");
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# ======================================================
-# USER INPUT
-# ======================================================
-stock = st.text_input("Enter Stock Symbol:", "GOOG").upper()
+# ---------- Input ----------
+stock = st.text_input("Enter the Stock ID", "GOOG")
 
-# ======================================================
-# RELIABLE DATA FETCH (Streamlit Cloud SAFE)
-# ======================================================
-@st.cache_data(show_spinner=False)
-def load_data(symbol):
-    try:
-        df = yf.download(
-            symbol,
-            period="max",
-            auto_adjust=True,
-            threads=False
-        )
-        return df
-    except:
-        return pd.DataFrame()
+end = datetime.now()
+start = "2005-01-01"
 
-data = load_data(stock)
+# ---------- Load Data (ASC for ML) ----------
+google_data = yf.download(stock, start, end)
 
-if data.empty:
-    st.error("Unable to fetch stock data. Please try again later.")
+if google_data.empty:
+    st.error("Invalid stock ticker")
     st.stop()
 
-# Keep ASC for calculations
-data_asc = data.copy()
+google_data_asc = google_data.copy()
+google_data_desc = google_data_asc.sort_index(ascending=False)
 
-# DESC for display
-data = data_asc.sort_index(ascending=False)
+model = load_model("Latest_stock_price_model.keras")
 
-st.subheader("Stock Data (Latest → Oldest)")
-st.write(data)
+st.subheader("Stock Data (2025 → 2005)")
+st.write(google_data_desc)
 
-# ======================================================
-# MOVING AVERAGES (computed on ASC data)
-# ======================================================
-data_asc['MA_250'] = data_asc.Close.rolling(250).mean()
-data_asc['MA_200'] = data_asc.Close.rolling(200).mean()
-data_asc['MA_100'] = data_asc.Close.rolling(100).mean()
+# ---------- Moving Averages (ASC) ----------
+google_data_asc["MA_100"] = google_data_asc.Close.rolling(100).mean()
+google_data_asc["MA_200"] = google_data_asc.Close.rolling(200).mean()
+google_data_asc["MA_250"] = google_data_asc.Close.rolling(250).mean()
 
-def plot_graph(title, ma_col, extra_col=None):
-    fig = plt.figure(figsize=(15, 6))
-    plt.plot(data_asc.Close, label="Actual Close", color="orange")
-    plt.plot(data_asc[ma_col], label=ma_col, color="blue")
-    if extra_col:
-        plt.plot(data_asc[extra_col], label=extra_col, color="green")
+def plot_ma(title, ma_column):
+    fig = plt.figure(figsize=(15,6))
+    plt.plot(google_data_asc.Close, label="Actual Close Price", color="orange")
+    plt.plot(google_data_asc[ma_column], label=ma_column, color="blue")
     plt.legend()
     plt.title(title)
     st.pyplot(fig)
 
-st.subheader("Moving Average for 250 days")
-plot_graph("MA 250 Days", "MA_250")
+st.subheader("Original Close Price vs MA (100 Days)")
+plot_ma("MA 100 Days", "MA_100")
 
-st.subheader("Moving Average for 200 days")
-plot_graph("MA 200 Days", "MA_200")
+st.subheader("Original Close Price vs MA (200 Days)")
+plot_ma("MA 200 Days", "MA_200")
 
-st.subheader("Moving Average for 100 days")
-plot_graph("MA 100 Days", "MA_100")
+st.subheader("Original Close Price vs MA (250 Days)")
+plot_ma("MA 250 Days", "MA_250")
 
-st.subheader("MA 100 vs MA 250")
-plot_graph("MA 100 vs MA 250", "MA_100", "MA_250")
-
-# ======================================================
-# MODEL TRAINING (Random Forest)
-# ======================================================
-df = data_asc[['Close']].copy()
-df['Target'] = df['Close'].shift(-1)
-df.dropna(inplace=True)
-
-scaler = MinMaxScaler()
-scaled = scaler.fit_transform(df)
-
-X = scaled[:, 0].reshape(-1, 1)
-y = scaled[:, 1]
-
-model = RandomForestRegressor(random_state=42)
-model.fit(X, y)
-
-# Optional save
-joblib.dump(model, "model.pkl")
-
-# ======================================================
-# PREDICTION
-# ======================================================
-scaled_pred = model.predict(X)
-
-pred = scaler.inverse_transform(
-    np.column_stack((scaled[:, 0], scaled_pred))
-)
-
-prediction_df = pd.DataFrame({
-    "Actual Price": df['Target'],
-    "Predicted Price": pred[:, 1]
-}, index=df.index)
-
-prediction_df = prediction_df.sort_index(ascending=False)
-
-# ======================================================
-# OUTPUT
-# ======================================================
-st.subheader("Actual vs Predicted Close Price")
-st.write(prediction_df)
-
-fig = plt.figure(figsize=(15, 6))
-plt.plot(prediction_df["Actual Price"], label="Actual Price", color="blue")
-plt.plot(prediction_df["Predicted Price"], label="Predicted Price", color="orange")
+st.subheader("Original Close Price vs MA (100 & 250 Days)")
+fig = plt.figure(figsize=(15,6))
+plt.plot(google_data_asc.Close, label="Actual Close Price", color="orange")
+plt.plot(google_data_asc.MA_100, label="MA 100 Days", color="green")
+plt.plot(google_data_asc.MA_250, label="MA 250 Days", color="blue")
 plt.legend()
 st.pyplot(fig)
+
+# ---------- Train/Test Split ----------
+splitting_len = int(len(google_data_asc) * 0.8)
+x_test = pd.DataFrame(google_data_asc["Close"][splitting_len:])
+x_test.columns = ["Close"]
+
+# ---------- Scaling ----------
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(x_test)
+
+x_data, y_data = [], []
+
+for i in range(100, len(scaled_data)):
+    x_data.append(scaled_data[i-100:i])
+    y_data.append(scaled_data[i])
+
+x_data = np.array(x_data)
+y_data = np.array(y_data)
+
+# ---------- Prediction ----------
+predictions = model.predict(x_data)
+
+inv_pred = scaler.inverse_transform(predictions)
+inv_y = scaler.inverse_transform(y_data)
+
+# Smooth predictions
+inv_pred_smoothed = (
+    pd.Series(inv_pred.reshape(-1))
+    .rolling(3)
+    .mean()
+    .bfill()
+    .values
+)
+
+# ---------- Prediction DataFrame (ASC) ----------
+ploting_data = pd.DataFrame(
+    {
+        "Actual Price": inv_y.reshape(-1),
+        "Predicted Price": inv_pred_smoothed
+    },
+    index=google_data_asc.index[splitting_len+100:]
+)
+
+# Align with full timeline
+ploting_data = ploting_data.reindex(google_data_asc.index)
+
+# Fill actual price everywhere
+ploting_data["Actual Price"] = google_data_asc["Close"]
+
+# Display latest first
+ploting_data = ploting_data.sort_index(ascending=False)
+
+# ---------- Output ----------
+st.subheader("Original vs Predicted Values (2025 → 2005)")
+st.write(ploting_data)
+
+st.subheader("Original vs Predicted Close Price")
+fig = plt.figure(figsize=(15,6))
+plt.plot(ploting_data["Actual Price"], label="Actual Price", color="orange")
+plt.plot(ploting_data["Predicted Price"], label="Predicted Price", color="blue")
+plt.legend()
+st.pyplot(fig)
+
+
+
+
+
+
+
+
