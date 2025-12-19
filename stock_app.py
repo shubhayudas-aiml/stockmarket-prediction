@@ -10,7 +10,9 @@ import os
 
 st.title("Stock Price Predictor App")
 
-# ---------- Background Image (SAFE) ----------
+# =========================================================
+# Background Image (SAFE – optional)
+# =========================================================
 def get_base64(file_path):
     if not os.path.exists(file_path):
         return None
@@ -35,28 +37,53 @@ if img_base64:
         unsafe_allow_html=True
     )
 
-# ---------- Input ----------
-stock = st.text_input("Enter the Stock ID", "GOOG")
+# =========================================================
+# User Input
+# =========================================================
+stock = st.text_input("Enter the Stock ID", "GOOG").upper()
 
-# ---------- Load Data (RELIABLE ON STREAMLIT CLOUD) ----------
-google_data = yf.download(stock, period="max")
+# =========================================================
+# Reliable Yahoo Finance Loader (FIXED)
+# =========================================================
+@st.cache_data(show_spinner=False)
+def load_stock_data(ticker):
+    try:
+        data = yf.download(
+            ticker,
+            period="max",
+            auto_adjust=True,
+            threads=False
+        )
+        return data
+    except:
+        return pd.DataFrame()
 
-if google_data is None or google_data.empty:
-    st.error("Unable to fetch stock data. Please try again later.")
+google_data = load_stock_data(stock)
+
+if google_data.empty:
+    st.warning("Yahoo Finance is temporarily unavailable. Please refresh or try again later.")
     st.stop()
 
-# ---------- Keep ASC for ML ----------
+# =========================================================
+# Keep ASC for ML, DESC for Display
+# =========================================================
 google_data_asc = google_data.copy()
-
-# ---------- DESC for display ----------
 google_data_desc = google_data_asc.sort_index(ascending=False)
 
+# =========================================================
+# Load Model
+# =========================================================
 model = load_model("Latest_stock_price_model.keras")
 
-st.subheader("Stock Data (2025 → 2005)")
+# =========================================================
+# Display Stock Data
+# =========================================================
+st.subheader("Stock Data (Latest to Oldest)")
 st.write(google_data_desc)
 
-# ---------- Moving Averages ----------
+# =========================================================
+# Moving Averages (ASC data)
+# =========================================================
 google_data_asc["MA_100"] = google_data_asc.Close.rolling(100).mean()
 google_data_asc["MA_200"] = google_data_asc.Close.rolling(200).mean()
 google_data_asc["MA_250"] = google_data_asc.Close.rolling(250).mean()
@@ -86,12 +113,16 @@ plt.plot(google_data_asc.MA_250, label="MA 250 Days", color="blue")
 plt.legend()
 st.pyplot(fig)
 
-# ---------- Train/Test Split ----------
+# =========================================================
+# Train / Test Split
+# =========================================================
 splitting_len = int(len(google_data_asc) * 0.8)
 x_test = pd.DataFrame(google_data_asc["Close"][splitting_len:])
 x_test.columns = ["Close"]
 
-# ---------- Scaling ----------
+# =========================================================
+# Scaling & Sequence Creation
+# =========================================================
 scaler = MinMaxScaler(feature_range=(0,1))
 scaled_data = scaler.fit_transform(x_test)
 
@@ -104,13 +135,15 @@ for i in range(100, len(scaled_data)):
 x_data = np.array(x_data)
 y_data = np.array(y_data)
 
-# ---------- Prediction ----------
+# =========================================================
+# Prediction
+# =========================================================
 predictions = model.predict(x_data)
 
 inv_pred = scaler.inverse_transform(predictions)
 inv_y = scaler.inverse_transform(y_data)
 
-# ---------- Smooth Predictions ----------
+# Smooth predictions (visual improvement)
 inv_pred_smoothed = (
     pd.Series(inv_pred.reshape(-1))
     .rolling(3)
@@ -119,7 +152,9 @@ inv_pred_smoothed = (
     .values
 )
 
-# ---------- Prediction DataFrame ----------
+# =========================================================
+# Prediction DataFrame
+# =========================================================
 ploting_data = pd.DataFrame(
     {
         "Actual Price": inv_y.reshape(-1),
@@ -131,14 +166,16 @@ ploting_data = pd.DataFrame(
 # Align with full timeline
 ploting_data = ploting_data.reindex(google_data_asc.index)
 
-# Fill actual price
+# Fill actual prices for all dates
 ploting_data["Actual Price"] = google_data_asc["Close"]
 
-# Display latest first
+# Show latest first
 ploting_data = ploting_data.sort_index(ascending=False)
 
-# ---------- Output ----------
-st.subheader("Original vs Predicted Values (2025 → 2005)")
+# =========================================================
+# Output
+# =========================================================
+st.subheader("Original vs Predicted Values (Latest to Oldest)")
 st.write(ploting_data)
 
 st.subheader("Original vs Predicted Close Price")
