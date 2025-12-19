@@ -6,113 +6,146 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+import os
 import base64
-from datetime import datetime
 
 st.title("Stock Price Predictor App")
 
-# ====== Background Image =======
+# ======================================================
+# SAFE Background Image (NO FileNotFoundError)
+# ======================================================
 def get_base64(file_path):
+    if not os.path.exists(file_path):
+        return None
     with open(file_path, "rb") as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 img_base64 = get_base64("s2.jpg")
 
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/jpg;base64,{img_base64}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+if img_base64:
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/jpg;base64,{img_base64}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-# ========= USER INPUT =========
-stock = st.text_input("Enter Stock Symbol:", "GOOG")
+# ======================================================
+# USER INPUT
+# ======================================================
+stock = st.text_input("Enter Stock Symbol:", "GOOG").upper()
 
-# ========= FETCH DATA =========
-end = datetime.now()
-start = datetime(end.year - 20, end.month, end.day)
+# ======================================================
+# RELIABLE DATA FETCH (Streamlit Cloud SAFE)
+# ======================================================
+@st.cache_data(show_spinner=False)
+def load_data(symbol):
+    try:
+        df = yf.download(
+            symbol,
+            period="max",
+            auto_adjust=True,
+            threads=False
+        )
+        return df
+    except:
+        return pd.DataFrame()
 
+data = load_data(stock)
 
-data = yf.download(stock, start, end)
-data = data.sort_index(ascending=False)
+if data.empty:
+    st.error("Unable to fetch stock data. Please try again later.")
+    st.stop()
 
-st.subheader("Stock Data")
+# Keep ASC for calculations
+data_asc = data.copy()
+
+# DESC for display
+data = data_asc.sort_index(ascending=False)
+
+st.subheader("Stock Data (Latest → Oldest)")
 st.write(data)
 
+# ======================================================
+# MOVING AVERAGES (computed on ASC data)
+# ======================================================
+data_asc['MA_250'] = data_asc.Close.rolling(250).mean()
+data_asc['MA_200'] = data_asc.Close.rolling(200).mean()
+data_asc['MA_100'] = data_asc.Close.rolling(100).mean()
 
-# ========= MOVING AVERAGES =========
-def plot_graph(figsize, values, full_data, extra_data=0, extra_dataset=None):
-    fig = plt.figure(figsize=figsize)
-    plt.plot(values, 'orange')
-    plt.plot(full_data.Close, 'b')
-    if extra_data:
-        plt.plot(extra_dataset)
-    return fig
-
-data['MA_250'] = data.Close.rolling(250).mean()
-data['MA_200'] = data.Close.rolling(200).mean()
-data['MA_100'] = data.Close.rolling(100).mean()
+def plot_graph(title, ma_col, extra_col=None):
+    fig = plt.figure(figsize=(15, 6))
+    plt.plot(data_asc.Close, label="Actual Close", color="orange")
+    plt.plot(data_asc[ma_col], label=ma_col, color="blue")
+    if extra_col:
+        plt.plot(data_asc[extra_col], label=extra_col, color="green")
+    plt.legend()
+    plt.title(title)
+    st.pyplot(fig)
 
 st.subheader("Moving Average for 250 days")
-st.pyplot(plot_graph((15, 6), data['MA_250'], data))
+plot_graph("MA 250 Days", "MA_250")
 
 st.subheader("Moving Average for 200 days")
-st.pyplot(plot_graph((15, 6), data['MA_200'], data))
+plot_graph("MA 200 Days", "MA_200")
 
 st.subheader("Moving Average for 100 days")
-st.pyplot(plot_graph((15, 6), data['MA_100'], data))
+plot_graph("MA 100 Days", "MA_100")
 
-st.subheader("Moving Average 100 vs Moving Average 250")
-st.pyplot(plot_graph((15, 6), data['MA_100'], data, 1, data['MA_250']))
+st.subheader("MA 100 vs MA 250")
+plot_graph("MA 100 vs MA 250", "MA_100", "MA_250")
 
-# ========= MODEL TRAINING =========
-
-# prepare data
-df = data[['Close']].copy()
-df['Target'] = df['Close'].shift(-1)  # predict next day close
-df = df.dropna()
+# ======================================================
+# MODEL TRAINING (Random Forest)
+# ======================================================
+df = data_asc[['Close']].copy()
+df['Target'] = df['Close'].shift(-1)
+df.dropna(inplace=True)
 
 scaler = MinMaxScaler()
 scaled = scaler.fit_transform(df)
 
-X = scaled[:, 0].reshape(-1, 1)        # Close
-y = scaled[:, 1]                       # Next day Close
+X = scaled[:, 0].reshape(-1, 1)
+y = scaled[:, 1]
 
-# train model
-model = RandomForestRegressor()
+model = RandomForestRegressor(random_state=42)
 model.fit(X, y)
 
-# save model (optional)
+# Optional save
 joblib.dump(model, "model.pkl")
 
-# ========= PREDICTION =========
+# ======================================================
+# PREDICTION
+# ======================================================
 scaled_pred = model.predict(X)
+
 pred = scaler.inverse_transform(
-    np.concatenate([scaled[:, 0].reshape(-1, 1), scaled_pred.reshape(-1, 1)], axis=1)
+    np.column_stack((scaled[:, 0], scaled_pred))
 )
 
 prediction_df = pd.DataFrame({
-    "Actual": df['Target'],
-    "Predicted": pred[:, 1]
+    "Actual Price": df['Target'],
+    "Predicted Price": pred[:, 1]
 }, index=df.index)
 
-
-
-st.subheader("Actual vs Predicted Close Price")
 prediction_df = prediction_df.sort_index(ascending=False)
+
+# ======================================================
+# OUTPUT
+# ======================================================
+st.subheader("Actual vs Predicted Close Price")
 st.write(prediction_df)
 
-
 fig = plt.figure(figsize=(15, 6))
-plt.plot(prediction_df["Actual"], label="Actual", color="blue")
-plt.plot(prediction_df["Predicted"], label="Predicted", color="orange")
+plt.plot(prediction_df["Actual Price"], label="Actual Price", color="blue")
+plt.plot(prediction_df["Predicted Price"], label="Predicted Price", color="orange")
 plt.legend()
 st.pyplot(fig)
