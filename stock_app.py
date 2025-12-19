@@ -4,16 +4,13 @@ import numpy as np
 from keras.models import load_model
 import matplotlib.pyplot as plt
 import yfinance as yf
-from datetime import datetime
 from sklearn.preprocessing import MinMaxScaler
 import base64
+import os
 
 st.title("Stock Price Predictor App")
 
-# ---------- Background Image ----------
-import os
-import base64
-
+# ---------- Background Image (SAFE) ----------
 def get_base64(file_path):
     if not os.path.exists(file_path):
         return None
@@ -23,35 +20,35 @@ def get_base64(file_path):
 
 img_base64 = get_base64("s2.jpg")
 
-
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/jpg;base64,{img_base64}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+if img_base64:
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/jpg;base64,{img_base64}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ---------- Input ----------
 stock = st.text_input("Enter the Stock ID", "GOOG")
 
-end = datetime.now()
-start = "2005-01-01"
+# ---------- Load Data (RELIABLE ON STREAMLIT CLOUD) ----------
+google_data = yf.download(stock, period="max")
 
-# ---------- Load Data (ASC for ML) ----------
-google_data = yf.download(stock, start, end)
-
-if google_data.empty:
-    st.error("Invalid stock ticker")
+if google_data is None or google_data.empty:
+    st.error("Unable to fetch stock data. Please try again later.")
     st.stop()
 
+# ---------- Keep ASC for ML ----------
 google_data_asc = google_data.copy()
+
+# ---------- DESC for display ----------
 google_data_desc = google_data_asc.sort_index(ascending=False)
 
 model = load_model("Latest_stock_price_model.keras")
@@ -59,7 +56,7 @@ model = load_model("Latest_stock_price_model.keras")
 st.subheader("Stock Data (2025 → 2005)")
 st.write(google_data_desc)
 
-# ---------- Moving Averages (ASC) ----------
+# ---------- Moving Averages ----------
 google_data_asc["MA_100"] = google_data_asc.Close.rolling(100).mean()
 google_data_asc["MA_200"] = google_data_asc.Close.rolling(200).mean()
 google_data_asc["MA_250"] = google_data_asc.Close.rolling(250).mean()
@@ -113,7 +110,7 @@ predictions = model.predict(x_data)
 inv_pred = scaler.inverse_transform(predictions)
 inv_y = scaler.inverse_transform(y_data)
 
-# Smooth predictions
+# ---------- Smooth Predictions ----------
 inv_pred_smoothed = (
     pd.Series(inv_pred.reshape(-1))
     .rolling(3)
@@ -122,7 +119,7 @@ inv_pred_smoothed = (
     .values
 )
 
-# ---------- Prediction DataFrame (ASC) ----------
+# ---------- Prediction DataFrame ----------
 ploting_data = pd.DataFrame(
     {
         "Actual Price": inv_y.reshape(-1),
@@ -134,7 +131,7 @@ ploting_data = pd.DataFrame(
 # Align with full timeline
 ploting_data = ploting_data.reindex(google_data_asc.index)
 
-# Fill actual price everywhere
+# Fill actual price
 ploting_data["Actual Price"] = google_data_asc["Close"]
 
 # Display latest first
@@ -150,4 +147,3 @@ plt.plot(ploting_data["Actual Price"], label="Actual Price", color="orange")
 plt.plot(ploting_data["Predicted Price"], label="Predicted Price", color="blue")
 plt.legend()
 st.pyplot(fig)
-
