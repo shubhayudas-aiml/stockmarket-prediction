@@ -6,8 +6,35 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import MinMaxScaler
 import joblib
+import os
+import base64
 
 st.title("Stock Price Predictor App")
+
+# ======================================================
+# SAFE BACKGROUND IMAGE LOADING (NO ERRORS)
+# ======================================================
+def set_background(image_file):
+    if not os.path.exists(image_file):
+        return
+    with open(image_file, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/jpg;base64,{encoded}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Set background
+set_background("s2.jpg")
 
 # ======================================================
 # USER INPUT
@@ -31,7 +58,7 @@ def load_data(symbol):
     except:
         pass
 
-    # Offline fallback (always works)
+    # Offline fallback
     df = pd.read_csv("stock_data_GOOG.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.set_index("Date")
@@ -124,7 +151,7 @@ st.subheader("Actual vs Predicted Values (Latest → Oldest)")
 st.write(prediction_df)
 
 # ======================================================
-# ✅ FIXED: OUTPUT GRAPH HEADING ADDED
+# FINAL GRAPH (WITH HEADING)
 # ======================================================
 st.subheader("Original vs Predicted Close Price")
 
