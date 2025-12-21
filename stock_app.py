@@ -11,9 +11,7 @@ import base64
 
 st.title("Stock Price Predictor App")
 
-# ======================================================
-# SAFE BACKGROUND IMAGE LOADING (NO ERRORS)
-# ======================================================
+# Background image
 def set_background(image_file):
     if not os.path.exists(image_file):
         return
@@ -33,17 +31,15 @@ def set_background(image_file):
         unsafe_allow_html=True
     )
 
-# Set background
 set_background("s2.jpg")
 
-# ======================================================
-# USER INPUT
-# ======================================================
-stock = st.text_input("Enter Stock Symbol:", "GOOG").upper()
+# Stock selection
+stock = st.selectbox(
+    "Select Stock Symbol",
+    ["GOOG", "AAPL", "MSFT", "AMZN", "TSLA", "META", "NFLX"]
+)
 
-# ======================================================
-# DATA LOADING (LIVE + FALLBACK)
-# ======================================================
+# Data loading (live + fallback)
 @st.cache_data(show_spinner=False)
 def load_data(symbol):
     try:
@@ -58,7 +54,6 @@ def load_data(symbol):
     except:
         pass
 
-    # Offline fallback
     df = pd.read_csv("stock_data_GOOG.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.set_index("Date")
@@ -69,18 +64,14 @@ data, source = load_data(stock)
 if source == "offline":
     st.info("Live data unavailable. Showing historical dataset.")
 
-# ======================================================
-# KEEP ASC FOR CALCULATION, DESC FOR DISPLAY
-# ======================================================
+# Data preparation
 data_asc = data.copy()
 data_desc = data_asc.sort_index(ascending=False)
 
 st.subheader("Stock Data (Latest → Oldest)")
 st.write(data_desc)
 
-# ======================================================
-# MOVING AVERAGES
-# ======================================================
+# Moving averages
 data_asc["MA_100"] = data_asc.Close.rolling(100).mean()
 data_asc["MA_200"] = data_asc.Close.rolling(200).mean()
 data_asc["MA_250"] = data_asc.Close.rolling(250).mean()
@@ -107,9 +98,7 @@ plot_ma("MA 250 Days", "MA_250")
 st.subheader("MA 100 vs MA 250")
 plot_ma("MA 100 vs MA 250", "MA_100", "MA_250")
 
-# ======================================================
-# MODEL TRAINING (RANDOM FOREST)
-# ======================================================
+# Model training
 df = data_asc[["Close"]].copy()
 df["Target"] = df["Close"].shift(-1)
 df.dropna(inplace=True)
@@ -125,9 +114,7 @@ model.fit(X, y)
 
 joblib.dump(model, "model.pkl")
 
-# ======================================================
-# PREDICTION
-# ======================================================
+# Predictions
 scaled_pred = model.predict(X)
 
 pred = scaler.inverse_transform(
@@ -144,17 +131,11 @@ prediction_df = pd.DataFrame(
 
 prediction_df = prediction_df.sort_index(ascending=False)
 
-# ======================================================
-# OUTPUT TABLE
-# ======================================================
+# Output
 st.subheader("Actual vs Predicted Values (Latest → Oldest)")
 st.write(prediction_df)
 
-# ======================================================
-# FINAL GRAPH (WITH HEADING)
-# ======================================================
 st.subheader("Original vs Predicted Close Price")
-
 fig = plt.figure(figsize=(15, 6))
 plt.plot(prediction_df["Actual Price"], label="Actual Price", color="blue")
 plt.plot(prediction_df["Predicted Price"], label="Predicted Price", color="orange")
