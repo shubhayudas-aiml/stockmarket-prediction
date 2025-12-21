@@ -19,7 +19,6 @@ stock = st.text_input("Enter Stock Symbol:", "GOOG").upper()
 # ======================================================
 @st.cache_data(show_spinner=False)
 def load_data(symbol):
-    # Try live Yahoo Finance
     try:
         df = yf.download(
             symbol,
@@ -32,7 +31,7 @@ def load_data(symbol):
     except:
         pass
 
-    # Fallback to offline CSV (ALWAYS WORKS)
+    # Offline fallback (always works)
     df = pd.read_csv("stock_data_GOOG.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.set_index("Date")
@@ -119,10 +118,15 @@ prediction_df = pd.DataFrame(
 prediction_df = prediction_df.sort_index(ascending=False)
 
 # ======================================================
-# OUTPUT
+# OUTPUT TABLE
 # ======================================================
-st.subheader("Actual vs Predicted Close Price")
+st.subheader("Actual vs Predicted Values (Latest → Oldest)")
 st.write(prediction_df)
+
+# ======================================================
+# ✅ FIXED: OUTPUT GRAPH HEADING ADDED
+# ======================================================
+st.subheader("Original vs Predicted Close Price")
 
 fig = plt.figure(figsize=(15, 6))
 plt.plot(prediction_df["Actual Price"], label="Actual Price", color="blue")
