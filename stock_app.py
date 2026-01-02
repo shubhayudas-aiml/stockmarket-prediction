@@ -54,9 +54,14 @@ def load_data(symbol):
     except:
         pass
 
+    # Offline fallback (dynamic till current date)
     df = pd.read_csv("stock_data_GOOG.csv")
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.set_index("Date")
+
+    today = pd.Timestamp.today().normalize()
+    df = df[df.index <= today]
+
     return df, "offline"
 
 data, source = load_data(stock)
